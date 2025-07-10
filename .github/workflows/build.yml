@@ -72,7 +72,7 @@ jobs:
       - name: Install system dependencies
         run: |
           apt-get update
-          apt-get install -y sudo git
+          apt-get install -y sudo git make
           
       - name: Checkout code
         uses: actions/checkout@v4
@@ -116,7 +116,7 @@ jobs:
       - name: Install system dependencies
         run: |
           apt-get update
-          apt-get install -y sudo git
+          apt-get install -y sudo git make
           
       - name: Checkout code
         uses: actions/checkout@v4
