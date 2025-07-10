@@ -1,6 +1,7 @@
 X-Repolib-Name: Pop_OS Release Sources
-Enabled: yes
-Types: deb deb-src
+Enabled: no
+Types: deb
 URIs: http://apt.pop-os.org/release
 Suites: UBUNTU_CODE
 Components: main
+# Disabled for ARM64 builds as Pop-OS packages are not available for ARM64

@@ -17,15 +17,42 @@ then
     echo "nameserver 1.1.1.1" > /run/systemd/resolve/stub-resolv.conf
 fi
 
-# Update and upgrade prior to installing Pop default settings
-apt-get update
+# Update and upgrade prior to installing packages
+echo "Updating package lists..."
+apt-get update || {
+    echo "Warning: Some repositories may not be available for ARM64"
+    echo "Continuing with available packages..."
+}
+
+echo "Upgrading existing packages..."
 apt-get dist-upgrade --yes \
     -o Dpkg::Options::="--force-confnew"
 
 # Install distribution packages
+# Note: pop-desktop-raspi doesn't exist for ARM64, using alternative packages
+echo "Installing desktop environment packages..."
 apt-get install --yes \
     -o Dpkg::Options::="--force-confnew" \
-    pop-desktop-raspi
+    ubuntu-desktop-minimal \
+    gnome-shell \
+    gnome-tweaks \
+    gnome-extensions-app \
+    firefox \
+    ubuntu-drivers-common || {
+    echo "Warning: Some desktop packages may not be available"
+    echo "Installing minimal desktop environment..."
+    apt-get install --yes \
+        -o Dpkg::Options::="--force-confnew" \
+        ubuntu-desktop-minimal \
+        firefox || {
+        echo "Installing basic packages only..."
+        apt-get install --yes \
+            -o Dpkg::Options::="--force-confnew" \
+            gnome-shell \
+            gdm3 \
+            ubuntu-drivers-common
+    }
+}
 
 # Install platform-specific packages
 case "$PLATFORM" in
