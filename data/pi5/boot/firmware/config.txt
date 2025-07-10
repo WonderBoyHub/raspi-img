@@ -1,0 +1,70 @@
+# Raspberry Pi 5 Configuration
+# Pop-OS Raspberry Pi 5 Image Builder
+
+[pi5]
+# Raspberry Pi 5 specific settings
+max_framebuffers=2
+arm_64bit=1
+
+# Enable PCIe for NVMe support
+dtparam=pciex1
+
+[all]
+# Kernel and boot configuration
+kernel=vmlinuz
+cmdline=cmdline.txt
+initramfs initrd.img followkernel
+
+# Enable hardware interfaces
+dtparam=audio=on
+dtparam=i2c_arm=on
+dtparam=spi=on
+
+# Graphics configuration for Pi 5
+# Use the updated KMS driver for better performance
+dtoverlay=vc4-kms-v3d-pi5
+gpu_mem=128
+
+# Camera support (Pi 5 has better camera handling)
+# Uncomment to enable camera module
+#camera_auto_detect=1
+
+# Display configuration
+# Pi 5 supports dual 4K displays
+disable_overscan=1
+hdmi_enable_4kp60=1
+
+# Audio configuration
+# Force HDMI audio output if needed
+#hdmi_drive=2
+
+# USB configuration
+# Pi 5 has improved USB handling
+dtoverlay=dwc2
+
+# Power management
+# Pi 5 has better power management
+over_voltage=2
+arm_freq=2400
+
+# GPIO and hardware interfaces
+# Enable additional GPIO functions for Pi 5
+dtparam=act_led_trigger=mmc0
+dtparam=pwr_led_trigger=input
+
+# Network configuration
+# Pi 5 has improved network performance
+dtparam=eth_led0=4
+dtparam=eth_led1=8
+
+# Performance optimizations for Pi 5
+# Increase GPU memory split for better graphics performance
+gpu_mem_256=128
+gpu_mem_512=128
+gpu_mem_1024=128
+
+# Enable hardware random number generator
+dtparam=random=on
+
+# Enable hardware watchdog
+dtparam=watchdog=on

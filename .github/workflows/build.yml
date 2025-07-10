@@ -1,0 +1,258 @@
+name: Build Pop-OS Raspberry Pi Images
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Build weekly on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build (pi4, pi5, or both)'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - pi4
+          - pi5
+          - both
+
+env:
+  UBUNTU_CODE: noble
+  ARCH: arm64
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      build-pi4: ${{ steps.check.outputs.build-pi4 }}
+      build-pi5: ${{ steps.check.outputs.build-pi5 }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Determine build targets
+        id: check
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            PLATFORM="${{ github.event.inputs.platform }}"
+          else
+            PLATFORM="both"
+          fi
+          
+          if [[ "$PLATFORM" == "both" || "$PLATFORM" == "pi4" ]]; then
+            echo "build-pi4=true" >> $GITHUB_OUTPUT
+          else
+            echo "build-pi4=false" >> $GITHUB_OUTPUT
+          fi
+          
+          if [[ "$PLATFORM" == "both" || "$PLATFORM" == "pi5" ]]; then
+            echo "build-pi5=true" >> $GITHUB_OUTPUT
+          else
+            echo "build-pi5=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Validate project structure
+        run: |
+          make validate TARGET_PLATFORM=pi4 || exit 1
+          make validate TARGET_PLATFORM=pi5 || exit 1
+
+  build-pi4:
+    needs: validate
+    if: needs.validate.outputs.build-pi4 == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:noble
+      options: --privileged
+    
+    steps:
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y sudo git
+          
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          make deps
+
+      - name: Build Pi 4 image
+        run: |
+          make pi4
+        env:
+          TARGET_PLATFORM: pi4
+
+      - name: Check build output
+        run: |
+          if [ -f "build/noble/pi4/raspi.img.xz" ]; then
+            echo "Pi 4 image built successfully"
+            ls -lh build/noble/pi4/raspi.img.xz
+          else
+            echo "Pi 4 image build failed"
+            exit 1
+          fi
+
+      - name: Upload Pi 4 image
+        uses: actions/upload-artifact@v4
+        with:
+          name: pop-os-pi4-image
+          path: build/noble/pi4/raspi.img.xz
+          retention-days: 30
+
+  build-pi5:
+    needs: validate
+    if: needs.validate.outputs.build-pi5 == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:noble
+      options: --privileged
+    
+    steps:
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y sudo git
+          
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          make deps
+
+      - name: Build Pi 5 image
+        run: |
+          make pi5
+        env:
+          TARGET_PLATFORM: pi5
+
+      - name: Check build output
+        run: |
+          if [ -f "build/noble/pi5/raspi.img.xz" ]; then
+            echo "Pi 5 image built successfully"
+            ls -lh build/noble/pi5/raspi.img.xz
+          else
+            echo "Pi 5 image build failed"
+            exit 1
+          fi
+
+      - name: Upload Pi 5 image
+        uses: actions/upload-artifact@v4
+        with:
+          name: pop-os-pi5-image
+          path: build/noble/pi5/raspi.img.xz
+          retention-days: 30
+
+  test:
+    needs: [build-pi4, build-pi5]
+    if: always() && (needs.build-pi4.result == 'success' || needs.build-pi5.result == 'success')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Pi 4 image
+        if: needs.build-pi4.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: pop-os-pi4-image
+          path: ./images/
+
+      - name: Download Pi 5 image
+        if: needs.build-pi5.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: pop-os-pi5-image
+          path: ./images/
+
+      - name: Basic image validation
+        run: |
+          echo "Validating downloaded images..."
+          for image in images/*.img.xz; do
+            if [ -f "$image" ]; then
+              echo "Found image: $image"
+              echo "Size: $(du -h "$image" | cut -f1)"
+              echo "File type: $(file "$image")"
+              
+              # Basic integrity check
+              if xz -t "$image"; then
+                echo "✓ $image passed compression test"
+              else
+                echo "✗ $image failed compression test"
+                exit 1
+              fi
+            fi
+          done
+
+  create-release:
+    needs: [build-pi4, build-pi5, test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./release/
+
+      - name: Create release info
+        run: |
+          echo "# Pop-OS Raspberry Pi Images" > release-notes.md
+          echo "" >> release-notes.md
+          echo "Built on: $(date -u)" >> release-notes.md
+          echo "Ubuntu Base: ${{ env.UBUNTU_CODE }}" >> release-notes.md
+          echo "Architecture: ${{ env.ARCH }}" >> release-notes.md
+          echo "" >> release-notes.md
+          echo "## Images in this release:" >> release-notes.md
+          
+          if [ -f "release/pop-os-pi4-image/raspi.img.xz" ]; then
+            echo "- **Raspberry Pi 4**: pop-os-pi4-$(date +%Y%m%d).img.xz" >> release-notes.md
+            mv "release/pop-os-pi4-image/raspi.img.xz" "release/pop-os-pi4-$(date +%Y%m%d).img.xz"
+          fi
+          
+          if [ -f "release/pop-os-pi5-image/raspi.img.xz" ]; then
+            echo "- **Raspberry Pi 5**: pop-os-pi5-$(date +%Y%m%d).img.xz" >> release-notes.md
+            mv "release/pop-os-pi5-image/raspi.img.xz" "release/pop-os-pi5-$(date +%Y%m%d).img.xz"
+          fi
+          
+          echo "" >> release-notes.md
+          echo "## Installation Instructions" >> release-notes.md
+          echo "1. Download the appropriate image for your Raspberry Pi model" >> release-notes.md
+          echo "2. Flash to SD card using Raspberry Pi Imager or dd command" >> release-notes.md
+          echo "3. Boot your Raspberry Pi" >> release-notes.md
+          echo "4. Complete the initial setup wizard" >> release-notes.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Pop-OS Raspberry Pi Images v${{ github.run_number }}
+          body_path: release-notes.md
+          files: release/*.img.xz
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  cleanup:
+    needs: [build-pi4, build-pi5, test, create-release]
+    if: always()
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Cleanup artifacts
+        uses: geekyeggo/delete-artifact@v2
+        with:
+          name: |
+            pop-os-pi4-image
+            pop-os-pi5-image
+        continue-on-error: true 
