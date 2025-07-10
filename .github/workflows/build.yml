@@ -24,6 +24,9 @@ env:
   UBUNTU_CODE: noble
   ARCH: arm64
 
+permissions:
+  contents: write
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -72,7 +75,12 @@ jobs:
       - name: Install system dependencies
         run: |
           apt-get update
-          apt-get install -y sudo git make
+          apt-get install -y sudo git make qemu-user-static
+          
+      - name: Setup ARM64 emulation
+        run: |
+          # Enable ARM64 emulation using qemu-user-static
+          update-binfmts --enable qemu-aarch64 || true
           
       - name: Checkout code
         uses: actions/checkout@v4
@@ -116,7 +124,12 @@ jobs:
       - name: Install system dependencies
         run: |
           apt-get update
-          apt-get install -y sudo git make
+          apt-get install -y sudo git make qemu-user-static
+          
+      - name: Setup ARM64 emulation
+        run: |
+          # Enable ARM64 emulation using qemu-user-static
+          update-binfmts --enable qemu-aarch64 || true
           
       - name: Checkout code
         uses: actions/checkout@v4
@@ -232,7 +245,7 @@ jobs:
           echo "4. Complete the initial setup wizard" >> release-notes.md
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2.3.2
         with:
           tag_name: v${{ github.run_number }}
           name: Pop-OS Raspberry Pi Images v${{ github.run_number }}
@@ -240,8 +253,7 @@ jobs:
           files: release/*.img.xz
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   cleanup:
     needs: [build-pi4, build-pi5, test, create-release]
