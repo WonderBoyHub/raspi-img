@@ -75,7 +75,7 @@ jobs:
       - name: Install system dependencies
         run: |
           apt-get update
-          apt-get install -y sudo git make qemu-user-static binfmt-support
+          apt-get install -y sudo git make qemu-user-static binfmt-support udev kmod util-linux
           
       - name: Setup ARM64 emulation
         run: |
@@ -144,7 +144,7 @@ jobs:
       - name: Install system dependencies
         run: |
           apt-get update
-          apt-get install -y sudo git make qemu-user-static binfmt-support
+          apt-get install -y sudo git make qemu-user-static binfmt-support udev kmod util-linux
           
       - name: Setup ARM64 emulation
         run: |

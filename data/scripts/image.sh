@@ -102,10 +102,37 @@ parted "${IMAGE}" mkpart primary ext4 256MiB 100%
 LODEV="$(losetup --find --show --partscan "${IMAGE}")"
 echo "Using loopback device: $LODEV"
 
+# Wait for partition device nodes to appear
+echo "Waiting for partition device nodes..."
+for i in {1..30}; do
+    if [ -b "${LODEV}p1" ] && [ -b "${LODEV}p2" ]; then
+        echo "Partition device nodes found"
+        break
+    fi
+    
+    if [ $i -eq 30 ]; then
+        echo "Partition device nodes not found after 30 seconds"
+        echo "Available devices:"
+        ls -la /dev/loop*
+        # Try to force partition table re-read
+        partprobe "${LODEV}" 2>/dev/null || true
+        sleep 1
+        if [ ! -b "${LODEV}p1" ] || [ ! -b "${LODEV}p2" ]; then
+            echo "Error: Partition device nodes ${LODEV}p1 and ${LODEV}p2 not found"
+            exit 1
+        fi
+    fi
+    
+    echo "Waiting for partitions... ($i/30)"
+    sleep 1
+done
+
 # Format boot partition
+echo "Formatting boot partition..."
 mkfs.vfat -n system-boot "${LODEV}p1"
 
 # Format root partition
+echo "Formatting root partition..."
 mkfs.ext4 -L writable "${LODEV}p2"
 
 # Create mount directory
