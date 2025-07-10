@@ -58,6 +58,15 @@ function cleanup {
         # Don't fail here, just warn
     fi
 
+    # Remove device mapper mappings
+    if [ -n "$(losetup --associated "${IMAGE}" 2>/dev/null)" ]; then
+        LODEV="$(losetup --associated "${IMAGE}" 2>/dev/null | cut -d ':' -f1 | head -n1)"
+        if [ -n "$LODEV" ]; then
+            echo "Removing device mapper mappings for: $LODEV"
+            kpartx -d "$LODEV" 2>/dev/null || true
+        fi
+    fi
+
     # Detach all loopback devices
     losetup --associated "${IMAGE}" 2>/dev/null | cut -d ':' -f1 | while read LODEV
     do
@@ -99,47 +108,44 @@ parted "${IMAGE}" set 1 boot on
 parted "${IMAGE}" mkpart primary ext4 256MiB 100%
 
 # Loopback mount image file
-LODEV="$(losetup --find --show --partscan "${IMAGE}")"
+LODEV="$(losetup --find --show "${IMAGE}")"
 echo "Using loopback device: $LODEV"
 
-# Wait for partition device nodes to appear
-echo "Waiting for partition device nodes..."
-for i in {1..30}; do
-    if [ -b "${LODEV}p1" ] && [ -b "${LODEV}p2" ]; then
-        echo "Partition device nodes found"
-        break
-    fi
-    
-    if [ $i -eq 30 ]; then
-        echo "Partition device nodes not found after 30 seconds"
-        echo "Available devices:"
-        ls -la /dev/loop*
-        # Try to force partition table re-read
-        partprobe "${LODEV}" 2>/dev/null || true
-        sleep 1
-        if [ ! -b "${LODEV}p1" ] || [ ! -b "${LODEV}p2" ]; then
-            echo "Error: Partition device nodes ${LODEV}p1 and ${LODEV}p2 not found"
-            exit 1
-        fi
-    fi
-    
-    echo "Waiting for partitions... ($i/30)"
-    sleep 1
-done
+# Create partition device mappings using kpartx
+echo "Creating partition device mappings..."
+kpartx -a "${LODEV}"
+sleep 2
+
+# Get the device mapper names
+BOOT_DEV="/dev/mapper/$(basename "${LODEV}")p1"
+ROOT_DEV="/dev/mapper/$(basename "${LODEV}")p2"
+
+echo "Boot device: $BOOT_DEV"
+echo "Root device: $ROOT_DEV"
+
+# Verify partition devices exist
+if [ ! -b "$BOOT_DEV" ] || [ ! -b "$ROOT_DEV" ]; then
+    echo "Error: Partition devices not found"
+    echo "Available device mappings:"
+    ls -la /dev/mapper/
+    echo "Available loop devices:"
+    ls -la /dev/loop*
+    exit 1
+fi
 
 # Format boot partition
 echo "Formatting boot partition..."
-mkfs.vfat -n system-boot "${LODEV}p1"
+mkfs.vfat -n system-boot "$BOOT_DEV"
 
 # Format root partition
 echo "Formatting root partition..."
-mkfs.ext4 -L writable "${LODEV}p2"
+mkfs.ext4 -L writable "$ROOT_DEV"
 
 # Create mount directory
 mkdir -pv "${MOUNT}"
 
 # Mount root partition
-mount "${LODEV}p2" "${MOUNT}"
+mount "$ROOT_DEV" "${MOUNT}"
 
 echo "Copying debootstrap to image..."
 # Copy debootstrap
@@ -176,7 +182,7 @@ fi
 
 # Mount boot partition
 mkdir -p "${MOUNT}/boot/firmware"
-mount "${LODEV}p1" "${MOUNT}/boot/firmware"
+mount "$BOOT_DEV" "${MOUNT}/boot/firmware"
 
 echo "Copying platform-specific firmware files..."
 # Copy platform-specific firmware files
