@@ -43,10 +43,16 @@ function cleanup {
     set +x
     echo "Cleaning up..."
 
-    # Unmount all mounted partitions
+    # Unmount all mounted partitions and bind mounts
     if [ -n "$(mount | grep "${MOUNT}")" ]
     then
         echo "Unmounting partitions..."
+        # Cleanup chroot bind mounts first
+        umount "${MOUNT}/dev/pts" 2>/dev/null || true
+        umount "${MOUNT}/dev" 2>/dev/null || true
+        umount "${MOUNT}/sys" 2>/dev/null || true
+        umount "${MOUNT}/proc" 2>/dev/null || true
+        # Then unmount the main partitions
         umount "${MOUNT}/boot/firmware" 2>/dev/null || true
         umount "${MOUNT}" 2>/dev/null || true
     fi
@@ -199,13 +205,35 @@ cp -v "${SCRIPT_DIR}/chroot.sh" "${MOUNT}/chroot.sh"
 chmod +x "${MOUNT}/chroot.sh"
 
 echo "Running chroot script for $PLATFORM..."
-# Run chroot script in container
-systemd-nspawn \
-    --machine=pop-os-${PLATFORM} \
-    --resolv-conf=off \
-    --directory="${MOUNT}" \
-    --setenv=PLATFORM="${PLATFORM}" \
-    bash /chroot.sh
+
+# Prepare chroot environment
+echo "Preparing chroot environment..."
+
+# Mount essential filesystems for chroot
+mount --bind /proc "${MOUNT}/proc"
+mount --bind /sys "${MOUNT}/sys"
+mount --bind /dev "${MOUNT}/dev"
+mount --bind /dev/pts "${MOUNT}/dev/pts"
+
+# Copy QEMU static binary for ARM64 emulation in chroot
+if [ ! -f "${MOUNT}/usr/bin/qemu-aarch64-static" ]; then
+    echo "Copying QEMU static binary for chroot..."
+    cp /usr/bin/qemu-aarch64-static "${MOUNT}/usr/bin/"
+fi
+
+# Set up basic DNS resolution
+mkdir -p "${MOUNT}/run/systemd/resolve"
+echo "nameserver 1.1.1.1" > "${MOUNT}/run/systemd/resolve/stub-resolv.conf"
+
+# Run chroot script
+PLATFORM="${PLATFORM}" chroot "${MOUNT}" bash /chroot.sh
+
+# Cleanup chroot mounts
+echo "Cleaning up chroot mounts..."
+umount "${MOUNT}/dev/pts" 2>/dev/null || true
+umount "${MOUNT}/dev" 2>/dev/null || true
+umount "${MOUNT}/sys" 2>/dev/null || true
+umount "${MOUNT}/proc" 2>/dev/null || true
 
 # Remove chroot script
 rm -v "${MOUNT}/chroot.sh"
