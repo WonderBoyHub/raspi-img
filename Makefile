@@ -122,11 +122,26 @@ $(BUILD_DIR)/debootstrap: validate
 	# Install using debootstrap
 	if ! sudo debootstrap \
 		"--arch=$(ARCH)" \
+		"--foreign" \
 		"$(UBUNTU_CODE)" \
 		"$@.partial" \
 		"$(UBUNTU_MIRROR)"; \
 	then \
 		echo "Debootstrap failed. Log content:"; \
+		cat "$@.partial/debootstrap/debootstrap.log" 2>/dev/null || echo "No log file found"; \
+		exit 1; \
+	fi
+	
+	# Copy QEMU static binary for ARM64 emulation
+	if [ "$(ARCH)" = "arm64" ]; then \
+		echo "Copying QEMU static binary for ARM64 emulation..."; \
+		sudo cp /usr/bin/qemu-aarch64-static "$@.partial/usr/bin/"; \
+	fi
+	
+	# Complete debootstrap second stage
+	if ! sudo chroot "$@.partial" /debootstrap/debootstrap --second-stage; \
+	then \
+		echo "Debootstrap second stage failed. Log content:"; \
 		cat "$@.partial/debootstrap/debootstrap.log" 2>/dev/null || echo "No log file found"; \
 		exit 1; \
 	fi

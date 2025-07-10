@@ -75,12 +75,32 @@ jobs:
       - name: Install system dependencies
         run: |
           apt-get update
-          apt-get install -y sudo git make qemu-user-static
+          apt-get install -y sudo git make qemu-user-static binfmt-support
           
       - name: Setup ARM64 emulation
         run: |
           # Enable ARM64 emulation using qemu-user-static
+          echo "Setting up ARM64 emulation..."
+          
+          # Register ARM64 binfmt if not already registered
+          if ! update-binfmts --display qemu-aarch64 2>/dev/null; then
+            echo "Registering ARM64 binfmt..."
+            update-binfmts --install qemu-aarch64 /usr/bin/qemu-aarch64-static \
+              --magic '\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00' \
+              --mask '\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff' \
+              --credentials yes --preserve yes --fix-binary yes
+          fi
+          
+          # Enable the registration
           update-binfmts --enable qemu-aarch64 || true
+          
+          # Verify the setup
+          echo "Verifying ARM64 emulation setup..."
+          update-binfmts --display qemu-aarch64 || echo "Warning: Could not display qemu-aarch64 binfmt"
+          
+          # Test basic ARM64 emulation
+          echo "Testing ARM64 emulation..."
+          /usr/bin/qemu-aarch64-static --version || echo "Warning: qemu-aarch64-static not working"
           
       - name: Checkout code
         uses: actions/checkout@v4
@@ -124,12 +144,32 @@ jobs:
       - name: Install system dependencies
         run: |
           apt-get update
-          apt-get install -y sudo git make qemu-user-static
+          apt-get install -y sudo git make qemu-user-static binfmt-support
           
       - name: Setup ARM64 emulation
         run: |
           # Enable ARM64 emulation using qemu-user-static
+          echo "Setting up ARM64 emulation..."
+          
+          # Register ARM64 binfmt if not already registered
+          if ! update-binfmts --display qemu-aarch64 2>/dev/null; then
+            echo "Registering ARM64 binfmt..."
+            update-binfmts --install qemu-aarch64 /usr/bin/qemu-aarch64-static \
+              --magic '\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00' \
+              --mask '\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff' \
+              --credentials yes --preserve yes --fix-binary yes
+          fi
+          
+          # Enable the registration
           update-binfmts --enable qemu-aarch64 || true
+          
+          # Verify the setup
+          echo "Verifying ARM64 emulation setup..."
+          update-binfmts --display qemu-aarch64 || echo "Warning: Could not display qemu-aarch64 binfmt"
+          
+          # Test basic ARM64 emulation
+          echo "Testing ARM64 emulation..."
+          /usr/bin/qemu-aarch64-static --version || echo "Warning: qemu-aarch64-static not working"
           
       - name: Checkout code
         uses: actions/checkout@v4
