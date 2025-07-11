@@ -38,6 +38,10 @@ apt-get dist-upgrade --yes \
 # Note: pop-desktop-raspi doesn't exist for ARM64, using alternative packages
 echo "Installing desktop environment packages..."
 
+# Check available disk space
+echo "Current disk usage:"
+df -h / || echo "Could not check disk space"
+
 # Ensure dpkg is in a consistent state before each major installation
 dpkg --configure -a || echo "dpkg configure completed with warnings"
 
@@ -51,9 +55,18 @@ if apt-get install --yes \
     firefox \
     ubuntu-drivers-common; then
     echo "Full desktop environment installed successfully"
+    
+    # Clean up package cache to free space
+    echo "Cleaning package cache after full installation..."
+    apt-get clean
+    echo "Disk usage after cleanup:"
+    df -h / || echo "Could not check disk space"
 else
     echo "Warning: Some desktop packages may not be available"
     echo "Installing minimal desktop environment..."
+    
+    # Clean up any partial downloads first
+    apt-get clean
     
     # Fix dpkg state again before fallback
     dpkg --configure -a || echo "dpkg configure completed with warnings"
@@ -81,6 +94,14 @@ else
 fi
 
 # Install platform-specific packages
+echo "Preparing for platform-specific package installation..."
+echo "Current disk usage before platform packages:"
+df -h / || echo "Could not check disk space"
+
+# Clean cache and fix dpkg state before platform packages
+apt-get clean
+dpkg --configure -a || echo "dpkg configure completed with warnings"
+
 case "$PLATFORM" in
     pi5)
         echo "Installing Raspberry Pi 5 specific packages..."
@@ -89,7 +110,10 @@ case "$PLATFORM" in
             -o Dpkg::Options::="--force-confnew" \
             linux-firmware-raspi \
             linux-raspi \
-            u-boot-rpi
+            u-boot-rpi || {
+            echo "Warning: Some Pi 5 packages failed to install"
+            dpkg --configure -a || echo "dpkg configure completed with warnings"
+        }
         ;;
     pi4)
         echo "Installing Raspberry Pi 4 specific packages..."
@@ -98,7 +122,10 @@ case "$PLATFORM" in
             -o Dpkg::Options::="--force-confnew" \
             linux-firmware-raspi \
             linux-raspi \
-            u-boot-rpi
+            u-boot-rpi || {
+            echo "Warning: Some Pi 4 packages failed to install"
+            dpkg --configure -a || echo "dpkg configure completed with warnings"
+        }
         ;;
     *)
         echo "Unknown platform: $PLATFORM, using default packages"
@@ -106,9 +133,18 @@ case "$PLATFORM" in
             -o Dpkg::Options::="--force-confnew" \
             linux-firmware-raspi \
             linux-raspi \
-            u-boot-rpi
+            u-boot-rpi || {
+            echo "Warning: Some default packages failed to install"
+            dpkg --configure -a || echo "dpkg configure completed with warnings"
+        }
         ;;
 esac
+
+# Clean up after platform packages
+echo "Cleaning up after platform package installation..."
+apt-get clean
+echo "Disk usage after platform packages:"
+df -h / || echo "Could not check disk space"
 
 # Clean apt caches
 apt-get autoremove --purge --yes
