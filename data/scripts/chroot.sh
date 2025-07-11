@@ -17,6 +17,12 @@ then
     echo "nameserver 1.1.1.1" > /run/systemd/resolve/stub-resolv.conf
 fi
 
+# Fix any interrupted dpkg operations first
+echo "Checking and fixing dpkg state..."
+dpkg --configure -a || {
+    echo "Warning: dpkg configuration had issues, continuing..."
+}
+
 # Update and upgrade prior to installing packages
 echo "Updating package lists..."
 apt-get update || {
@@ -31,28 +37,48 @@ apt-get dist-upgrade --yes \
 # Install distribution packages
 # Note: pop-desktop-raspi doesn't exist for ARM64, using alternative packages
 echo "Installing desktop environment packages..."
-apt-get install --yes \
+
+# Ensure dpkg is in a consistent state before each major installation
+dpkg --configure -a || echo "dpkg configure completed with warnings"
+
+# Try to install the full desktop environment
+if apt-get install --yes \
     -o Dpkg::Options::="--force-confnew" \
     ubuntu-desktop-minimal \
     gnome-shell \
     gnome-tweaks \
     gnome-extensions-app \
     firefox \
-    ubuntu-drivers-common || {
+    ubuntu-drivers-common; then
+    echo "Full desktop environment installed successfully"
+else
     echo "Warning: Some desktop packages may not be available"
     echo "Installing minimal desktop environment..."
-    apt-get install --yes \
+    
+    # Fix dpkg state again before fallback
+    dpkg --configure -a || echo "dpkg configure completed with warnings"
+    
+    if apt-get install --yes \
         -o Dpkg::Options::="--force-confnew" \
         ubuntu-desktop-minimal \
-        firefox || {
+        firefox; then
+        echo "Minimal desktop environment installed successfully"
+    else
         echo "Installing basic packages only..."
+        
+        # Fix dpkg state one more time
+        dpkg --configure -a || echo "dpkg configure completed with warnings"
+        
         apt-get install --yes \
             -o Dpkg::Options::="--force-confnew" \
             gnome-shell \
             gdm3 \
-            ubuntu-drivers-common
-    }
-}
+            ubuntu-drivers-common || {
+            echo "Warning: Even basic package installation had issues"
+            echo "Continuing with whatever packages were successfully installed..."
+        }
+    fi
+fi
 
 # Install platform-specific packages
 case "$PLATFORM" in
@@ -88,6 +114,10 @@ esac
 apt-get autoremove --purge --yes
 apt-get autoclean
 apt-get clean
+
+# Final dpkg configuration to ensure everything is properly set up
+echo "Final dpkg configuration check..."
+dpkg --configure -a || echo "Final dpkg configure completed with warnings"
 
 # Copy firmware to boot partition
 echo "Copying firmware files..."
