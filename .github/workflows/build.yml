@@ -267,22 +267,50 @@ jobs:
           echo "" >> release-notes.md
           echo "## Images in this release:" >> release-notes.md
           
+          # Check file sizes and split if necessary
+          for img in release/*/raspi.img.xz; do
+            if [ -f "$img" ]; then
+              size=$(stat -c%s "$img")
+              # If larger than 1.8GB, split into chunks
+              if [ $size -gt 1932735283 ]; then
+                echo "Splitting large image: $img ($(numfmt --to=iec-i --suffix=B $size))"
+                split -b 1800M "$img" "${img}.part"
+                rm "$img"
+                echo "Image split into parts: ${img}.part*"
+              fi
+            fi
+          done
+          
           if [ -f "release/pop-os-pi4-image/raspi.img.xz" ]; then
             echo "- **Raspberry Pi 4**: pop-os-pi4-$(date +%Y%m%d).img.xz" >> release-notes.md
             mv "release/pop-os-pi4-image/raspi.img.xz" "release/pop-os-pi4-$(date +%Y%m%d).img.xz"
+          elif ls release/pop-os-pi4-image/raspi.img.xz.part* >/dev/null 2>&1; then
+            echo "- **Raspberry Pi 4**: pop-os-pi4-$(date +%Y%m%d).img.xz (split into parts)" >> release-notes.md
+            for part in release/pop-os-pi4-image/raspi.img.xz.part*; do
+              mv "$part" "release/pop-os-pi4-$(date +%Y%m%d).img.xz.$(basename "$part" | cut -d. -f4-)"
+            done
           fi
           
           if [ -f "release/pop-os-pi5-image/raspi.img.xz" ]; then
             echo "- **Raspberry Pi 5**: pop-os-pi5-$(date +%Y%m%d).img.xz" >> release-notes.md
             mv "release/pop-os-pi5-image/raspi.img.xz" "release/pop-os-pi5-$(date +%Y%m%d).img.xz"
+          elif ls release/pop-os-pi5-image/raspi.img.xz.part* >/dev/null 2>&1; then
+            echo "- **Raspberry Pi 5**: pop-os-pi5-$(date +%Y%m%d).img.xz (split into parts)" >> release-notes.md
+            for part in release/pop-os-pi5-image/raspi.img.xz.part*; do
+              mv "$part" "release/pop-os-pi5-$(date +%Y%m%d).img.xz.$(basename "$part" | cut -d. -f4-)"
+            done
           fi
           
           echo "" >> release-notes.md
           echo "## Installation Instructions" >> release-notes.md
           echo "1. Download the appropriate image for your Raspberry Pi model" >> release-notes.md
-          echo "2. Flash to SD card using Raspberry Pi Imager or dd command" >> release-notes.md
-          echo "3. Boot your Raspberry Pi" >> release-notes.md
-          echo "4. Complete the initial setup wizard" >> release-notes.md
+          echo "2. If the image is split into parts, combine them first:" >> release-notes.md
+          echo "   \`\`\`bash" >> release-notes.md
+          echo "   cat pop-os-*.img.xz.part* > pop-os-complete.img.xz" >> release-notes.md
+          echo "   \`\`\`" >> release-notes.md
+          echo "3. Flash to SD card using Raspberry Pi Imager or dd command" >> release-notes.md
+          echo "4. Boot your Raspberry Pi" >> release-notes.md
+          echo "5. Complete the initial setup wizard" >> release-notes.md
 
       - name: Create Release
         uses: softprops/action-gh-release@v2.3.2
@@ -290,7 +318,9 @@ jobs:
           tag_name: v${{ github.run_number }}
           name: Pop-OS Raspberry Pi Images v${{ github.run_number }}
           body_path: release-notes.md
-          files: release/*.img.xz
+          files: |
+            release/*.img.xz
+            release/*.img.xz.part*
           draft: false
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}

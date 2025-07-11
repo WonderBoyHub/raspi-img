@@ -104,8 +104,8 @@ set -x
 
 echo "Creating ${PLATFORM} image..."
 
-# Allocate image (8GiB)
-fallocate --verbose --length 8GiB "${IMAGE}"
+# Allocate image (4GiB)
+fallocate --verbose --length 4GiB "${IMAGE}"
 
 # Partition image
 parted "${IMAGE}" mktable msdos
